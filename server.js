@@ -69,10 +69,15 @@ app.get('/webhook', (req, res) => {
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200); // ack immediately so Meta doesn't retry
 
+  console.log('>>> Webhook POST received:', JSON.stringify(req.body));
+
   try {
     const entry = req.body.entry?.[0]?.changes?.[0]?.value;
     const msg = entry?.messages?.[0];
-    if (!msg || msg.type !== 'text') return;
+    if (!msg || msg.type !== 'text') {
+      console.log('... not a text message, ignoring. type=', msg?.type);
+      return;
+    }
 
     const from = msg.from;              // customer's number
     const text = msg.text.body;
