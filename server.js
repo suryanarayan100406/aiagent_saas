@@ -17,7 +17,7 @@ const GRAPH = `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`;
 const knowledge = readFileSync('./knowledge.md', 'utf-8');
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
 const systemPrompt = `You are the assistant replying on behalf of a solo
 construction contractor via WhatsApp. Reply in his voice: warm, brief, practical,
