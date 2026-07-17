@@ -64,7 +64,11 @@ async function sendWhatsApp(to, body) {
       text: { body },
     }),
   });
-  if (!res.ok) console.error('Send failed:', res.status, await res.text());
+  if (!res.ok) {
+    console.error('Send failed:', res.status, await res.text());
+  } else {
+    console.log('Send OK to', to);
+  }
 }
 
 const app = express();
@@ -119,6 +123,7 @@ app.post('/webhook', async (req, res) => {
     );
 
     if (RISKY.test(text)) {
+      console.log('... RISKY match -> holding for owner approval. from=', from);
       // Hold the auto-reply; ping the owner with a ready-to-send draft.
       addMessage(from, 'assistant', '(held for owner approval)');
       if (OWNER_NUMBER) {
