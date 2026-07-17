@@ -17,23 +17,40 @@ const GRAPH = `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`;
 const knowledge = readFileSync('./knowledge.md', 'utf-8');
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
 
-// Call Gemini with retries so temporary 503 "high demand" spikes self-heal.
-async function generateWithRetry(prompt, tries = 3) {
-  for (let i = 0; i < tries; i++) {
-    try {
-      const result = await model.generateContent(prompt);
-      return result.response.text().trim();
-    } catch (err) {
-      const status = err?.status;
-      if ((status === 503 || status === 429) && i < tries - 1) {
-        await new Promise(r => setTimeout(r, 1500 * (i + 1)));
-        continue;
+// Free-tier models each have their own small daily quota. We try them in order:
+// when one is rate-limited (429) or overloaded (503), fall through to the next.
+// This multiplies total daily capacity and avoids one limit killing the bot.
+const MODELS = [
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash-lite',
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+];
+
+// Try each model; on 429/503 move to the next. One short retry per model for 503.
+async function generateWithRetry(prompt) {
+  let lastErr;
+  for (const name of MODELS) {
+    const model = genAI.getGenerativeModel({ model: name });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const result = await model.generateContent(prompt);
+        return result.response.text().trim();
+      } catch (err) {
+        lastErr = err;
+        const status = err?.status;
+        if (status === 503 && attempt === 0) {
+          await new Promise(r => setTimeout(r, 1200)); // brief pause, retry same model
+          continue;
+        }
+        // 429 (daily quota) or repeated 503 -> break to next model
+        console.log(`Model ${name} failed (${status}), trying next...`);
+        break;
       }
-      throw err;
     }
   }
+  throw lastErr;
 }
 
 const systemPrompt = `You are the assistant replying on behalf of Aditya Singh of
@@ -118,15 +135,19 @@ app.post('/webhook', async (req, res) => {
       return;
     }
 
-    // First-time customer greeting
+    // First-time customer whose first message is just a greeting (hi/hello/namaste):
+    // send the branded welcome and stop. If their first message is a real question,
+    // skip the canned greeting and let the AI answer it directly.
     const isNew = getHistory(from).length === 0;
-    if (isNew) {
+    const bareGreeting = /^\s*(hi+|hey+|hello+|namaste|namaskar|hii+|start|yo)\b[\s!.]*$/i;
+    if (isNew && bareGreeting.test(text)) {
       const greeting = `🙏 Namaste! Balaji Construction mein aapka swagat hai.\n\n` +
         `Main Aditya Singh ka assistant hoon. Aap construction ya interior se ` +
         `related koi bhi kaam ke baare mein puchh sakte hain.\n\n` +
         `Batayein, aapko kya kaam karwana hai?`;
       await sendWhatsApp(from, greeting);
       addMessage(from, 'assistant', greeting);
+      return;
     }
 
     addMessage(from, 'user', text);
