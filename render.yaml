@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: wa-cloud-agent
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      # Set these values in the Render dashboard (Environment tab).
+      # Marking sync:false keeps secrets out of this committed file.
+      - key: WHATSAPP_TOKEN
+        sync: false
+      - key: PHONE_NUMBER_ID
+        sync: false
+      - key: VERIFY_TOKEN
+        sync: false
+      - key: OWNER_NUMBER
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      # Render injects PORT automatically; server.js already reads it.
