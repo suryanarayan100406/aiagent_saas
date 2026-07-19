@@ -112,6 +112,13 @@ app.post('/webhook', async (req, res) => {
       await store.logEvent(company.id, 'held', { provider });
       console.log('Held for approval:', from);
 
+      // Tell the customer their query has been passed on, so they're not left
+      // waiting in silence for a reply that's pending owner approval.
+      const ack = company.hold_ack ||
+        `Thanks for your message 🙏 ${company.owner_name || 'The owner'} will get back to you personally on this shortly.`;
+      await sendWhatsApp(from, ack);
+      await store.addMsg(company.id, contact.id, 'assistant', ack, { status: 'sent' });
+
       // Also ping the owner on WhatsApp so they don't have to watch the dashboard.
       if (company.owner_phone) {
         const who = contact.name || from;
@@ -120,7 +127,10 @@ app.post('/webhook', async (req, res) => {
           `From ${who}:\n"${text}"\n\n` +
           `Draft reply:\n"${reply}"\n\n` +
           `Open the dashboard to send, edit, or reject.`;
-        await sendWhatsApp(company.owner_phone, alert);
+        const sent = await sendWhatsApp(company.owner_phone, alert);
+        console.log(sent ? `Owner alert sent to ${company.owner_phone}` : `Owner alert FAILED to ${company.owner_phone}`);
+      } else {
+        console.log('No owner_phone set — skipping owner alert. Set it in Knowledge & Settings.');
       }
     } else {
       const ok = await sendWhatsApp(from, reply);
