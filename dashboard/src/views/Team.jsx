@@ -1,12 +1,12 @@
-// Team management (owner only). Firebase Auth holds the actual login credentials,
-// so adding a teammate is two steps: (1) create their Firebase user, (2) link that
-// user's UID to this company here. We show the current team and a link form.
+// Team management (owner only). The backend creates the teammate's Firebase login
+// (Admin SDK) and provisions them into this company in one step — the owner just
+// enters email + password + role here. We show the current team and an add form.
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 
 export default function Team() {
   const [users, setUsers] = useState([]);
-  const [form, setForm] = useState({ uid: '', email: '', name: '', role: 'staff' });
+  const [form, setForm] = useState({ email: '', password: '', name: '', role: 'staff' });
   const [err, setErr] = useState(null);
   const [msg, setMsg] = useState(null);
 
@@ -15,11 +15,12 @@ export default function Team() {
 
   const add = async () => {
     setErr(null); setMsg(null);
-    if (!form.uid.trim()) { setErr('Firebase UID is required'); return; }
+    if (!form.email.trim()) { setErr('Email is required'); return; }
+    if (form.password.length < 6) { setErr('Password must be at least 6 characters'); return; }
     try {
       await api.addUser(form);
-      setMsg('Teammate linked.');
-      setForm({ uid: '', email: '', name: '', role: 'staff' });
+      setMsg('Teammate added. Share their email and password so they can sign in.');
+      setForm({ email: '', password: '', name: '', role: 'staff' });
       load();
     } catch (e) { setErr(e.message); }
   };
@@ -50,17 +51,19 @@ export default function Team() {
       <div className="card">
         <h3 style={{ marginTop: 0 }}>Add a teammate</h3>
         <p className="muted" style={{ fontSize: 13 }}>
-          First create their login in Firebase Console → Authentication → Add user
-          (email + password). Copy their <b>User UID</b> and paste it below.
+          Enter their email, a starting password, and role. Their login is created
+          automatically — share the email and password so they can sign in and change it.
         </p>
         <div className="row" style={{ gap: 12 }}>
           <div style={{ flex: 1 }}>
-            <label>Firebase UID</label>
-            <input value={form.uid} onChange={set('uid')} placeholder="paste UID" />
+            <label>Email</label>
+            <input type="email" value={form.email} onChange={set('email')}
+              placeholder="teammate@email.com" />
           </div>
           <div style={{ flex: 1 }}>
-            <label>Email</label>
-            <input value={form.email} onChange={set('email')} />
+            <label>Password</label>
+            <input type="text" value={form.password} onChange={set('password')}
+              placeholder="min 6 characters" />
           </div>
         </div>
         <div className="row" style={{ gap: 12 }}>
