@@ -1,163 +1,52 @@
 import 'dotenv/config';
 import express from 'express';
-import { readFileSync } from 'fs';
-import { getHistory, addMessage } from './memory.js';
+import cors from 'cors';
+import { generate } from './lib/llm.js';
+import { sendWhatsApp } from './lib/whatsapp.js';
+import { getCompany } from './lib/supa.js';
+import { api } from './lib/routes.js';
+import * as store from './lib/store.js';
 
-const {
-  WHATSAPP_TOKEN,
-  PHONE_NUMBER_ID,
-  VERIFY_TOKEN,
-  OWNER_NUMBER,
-  PORT = 3000,
-} = process.env;
+const { VERIFY_TOKEN, PORT = 3000 } = process.env;
 
-const GRAPH = `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`;
-const knowledge = readFileSync('./knowledge.md', 'utf-8');
+const BASE_RISKY = /price|cost|quote|quotation|deposit|pay|invoice|confirm|book|when can you|guarantee|discount|kitna|kharcha|rate|paisa|advance|booking|\$|£|₹|€/i;
+const BARE_GREETING = /^\s*(hi+|hey+|hello+|namaste|namaskar|hii+|start|yo)\b[\s!.]*$/i;
 
-// --- LLM providers, tried in order until one succeeds --------------------
-// Add as many Gemini keys as you like via env vars. Each key has its own
-// daily free quota, so N keys ~= N x capacity. OpenRouter is the final net.
-//   GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEY_3, GEMINI_API_KEY_4
-//   OPENROUTER_API_KEY   (get free key at openrouter.ai)
-const GEMINI_KEYS = [
-  process.env.GEMINI_API_KEY,
-  process.env.GEMINI_API_KEY_2,
-  process.env.GEMINI_API_KEY_3,
-  process.env.GEMINI_API_KEY_4,
-].filter(Boolean);
-
-// Models tried per Gemini key (cheapest/fastest first).
-const GEMINI_MODELS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash'];
-
-// OpenRouter free models — final fallback if all Gemini quotas are spent.
-const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
-const OPENROUTER_MODELS = [
-  'qwen/qwen3-next-80b-a3b-instruct:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'google/gemma-4-31b-it:free',
-];
-
-// One Gemini call via REST (so we can rotate raw keys easily).
-async function callGemini(key, modelName, prompt) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${key}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-  });
-  if (!res.ok) {
-    const e = new Error(`Gemini ${res.status}`);
-    e.status = res.status;
-    throw e;
-  }
-  const data = await res.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw Object.assign(new Error('Gemini empty'), { status: 500 });
-  return text.trim();
-}
-
-// One OpenRouter call (OpenAI-compatible chat API).
-async function callOpenRouter(modelName, prompt) {
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${OPENROUTER_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: modelName,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-  if (!res.ok) {
-    const e = new Error(`OpenRouter ${res.status}`);
-    e.status = res.status;
-    throw e;
-  }
-  const data = await res.json();
-  const text = data?.choices?.[0]?.message?.content;
-  if (!text) throw Object.assign(new Error('OpenRouter empty'), { status: 500 });
-  return text.trim();
-}
-
-// Try Gemini keys x models, then OpenRouter models. Skip any that 429/503.
-async function generateWithRetry(prompt) {
-  let lastErr;
-
-  // 1) Every Gemini key, every model.
-  for (let k = 0; k < GEMINI_KEYS.length; k++) {
-    for (const modelName of GEMINI_MODELS) {
-      try {
-        return await callGemini(GEMINI_KEYS[k], modelName, prompt);
-      } catch (err) {
-        lastErr = err;
-        console.log(`Gemini key#${k + 1} ${modelName} failed (${err.status}), next...`);
-        // 429 = quota for this key/model; 503 = overloaded. Either way move on.
-      }
-    }
-  }
-
-  // 2) OpenRouter fallback.
-  if (OPENROUTER_KEY) {
-    for (const modelName of OPENROUTER_MODELS) {
-      try {
-        return await callOpenRouter(modelName, prompt);
-      } catch (err) {
-        lastErr = err;
-        console.log(`OpenRouter ${modelName} failed (${err.status}), next...`);
-      }
-    }
-  }
-
-  throw lastErr || new Error('No LLM provider available');
-}
-
-const systemPrompt = `You are the assistant replying on behalf of Aditya Singh of
-Balaji Construction, a construction contractor, via WhatsApp. Reply in his voice:
+// Build the system prompt from the company's live knowledge (edited via dashboard).
+function buildSystemPrompt(company) {
+  return `You are the assistant replying on behalf of ${company.owner_name || 'the owner'} of
+${company.name}, a construction contractor, via WhatsApp. Reply in their voice:
 warm, respectful, brief, and practical — like a helpful contractor texting.
 Keep replies short (1-4 sentences).
 
 IMPORTANT — language: reply in the SAME language the customer used. If they write
 in Hindi, reply in Hindi; if English, reply in English; Hinglish is fine. Never
-switch to a language the customer did not use. Do NOT use Australian/Western slang
-like "G'day" or "mate".
+switch to a language the customer did not use. Do NOT use Western slang like "G'day".
 
 Use ONLY the info below. NEVER invent prices, dates, or promises. If asked for a
 price or to commit to anything, steer toward booking a free site visit. If unsure,
-say you'll check with Aditya and get back to them.
+say you'll check with ${company.owner_name || 'the owner'} and get back to them.
 
 BUSINESS INFO:
-${knowledge}`;
+${company.knowledge || ''}`;
+}
 
-// Messages that involve money or commitment -> hold and ask the owner first.
-const RISKY = /price|cost|quote|quotation|deposit|pay|invoice|confirm|book|when can you|guarantee|discount|kitna|kharcha|rate|paisa|advance|booking|\$|£|₹|€/i;
-
-// --- Send a text message via the Cloud API ---
-async function sendWhatsApp(to, body) {
-  const res = await fetch(GRAPH, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to,
-      type: 'text',
-      text: { body },
-    }),
-  });
-  if (!res.ok) {
-    console.error('Send failed:', res.status, await res.text());
-  } else {
-    console.log('Send OK to', to);
-  }
+function riskyMatcher(company) {
+  const extra = (company.risky_words || '')
+    .split(',').map((w) => w.trim()).filter(Boolean)
+    .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (!extra.length) return BASE_RISKY;
+  return new RegExp(`${BASE_RISKY.source}|${extra.join('|')}`, 'i');
 }
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
-// --- Webhook verification (Meta calls this once when you save the webhook) ---
+// Dashboard API (Firebase-authenticated).
+app.use('/api', api);
+
+// --- Webhook verification ---
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -171,74 +60,68 @@ app.get('/webhook', (req, res) => {
 
 // --- Incoming messages ---
 app.post('/webhook', async (req, res) => {
-  res.sendStatus(200); // ack immediately so Meta doesn't retry
-
-  console.log('>>> Webhook POST received:', JSON.stringify(req.body));
+  res.sendStatus(200); // ack immediately
 
   try {
-    const entry = req.body.entry?.[0]?.changes?.[0]?.value;
-    const msg = entry?.messages?.[0];
-    if (!msg || msg.type !== 'text') {
-      console.log('... not a text message, ignoring. type=', msg?.type);
-      return;
-    }
+    const value = req.body.entry?.[0]?.changes?.[0]?.value;
+    const msg = value?.messages?.[0];
+    if (!msg || msg.type !== 'text') return;
 
-    const from = msg.from;              // customer's number
+    const from = msg.from;
     const text = msg.text.body;
+    const profileName = value?.contacts?.[0]?.profile?.name;
 
-    // Owner approval command: reply "/ok <number> <message>" to send manually,
-    // or just talk to the customer yourself.
-    if (from === OWNER_NUMBER && text.startsWith('/ok ')) {
-      const [, target, ...rest] = text.split(' ');
-      await sendWhatsApp(target, rest.join(' '));
+    const company = await getCompany();
+    const contact = await store.getOrCreateContact(company.id, from, profileName);
+
+    // Log the inbound customer message.
+    await store.addMsg(company.id, contact.id, 'user', text, { wamid: msg.id });
+    await store.logEvent(company.id, 'inbound', {});
+
+    // Human takeover: if AI is off for this contact or company, don't auto-reply.
+    if (company.ai_enabled === false || contact.ai_enabled === false) {
+      console.log('AI disabled for this contact/company — leaving for human.');
       return;
     }
 
-    // First-time customer whose first message is just a greeting (hi/hello/namaste):
-    // send the branded welcome and stop. If their first message is a real question,
-    // skip the canned greeting and let the AI answer it directly.
-    const isNew = getHistory(from).length === 0;
-    const bareGreeting = /^\s*(hi+|hey+|hello+|namaste|namaskar|hii+|start|yo)\b[\s!.]*$/i;
-    if (isNew && bareGreeting.test(text)) {
-      const greeting = `🙏 Namaste! Balaji Construction mein aapka swagat hai.\n\n` +
-        `Main Aditya Singh ka assistant hoon. Aap construction ya interior se ` +
-        `related koi bhi kaam ke baare mein puchh sakte hain.\n\n` +
-        `Batayein, aapko kya kaam karwana hai?`;
-      await sendWhatsApp(from, greeting);
-      addMessage(from, 'assistant', greeting);
+    // First-time bare greeting -> branded welcome, then stop.
+    const history = await store.getRecentMessages(contact.id, 2);
+    const isFirst = history.length <= 1; // only the message we just stored
+    if (isFirst && BARE_GREETING.test(text) && company.greeting) {
+      await sendWhatsApp(from, company.greeting);
+      await store.addMsg(company.id, contact.id, 'assistant', company.greeting);
       return;
     }
 
-    addMessage(from, 'user', text);
-
-    // Build the prompt with recent history for thread context
-    const history = getHistory(from)
-      .map(m => `${m.role === 'user' ? 'Customer' : 'You'}: ${m.text}`)
+    // Build prompt with recent thread context.
+    const recent = await store.getRecentMessages(contact.id, 12);
+    const convo = recent
+      .map((m) => `${m.role === 'user' ? 'Customer' : 'You'}: ${m.text}`)
       .join('\n');
 
-    const reply = await generateWithRetry(
-      `${systemPrompt}\n\nConversation so far:\n${history}\n\nYou:`
+    const { text: reply, provider } = await generate(
+      `${buildSystemPrompt(company)}\n\nConversation so far:\n${convo}\n\nYou:`
     );
 
+    const RISKY = riskyMatcher(company);
     if (RISKY.test(text)) {
-      console.log('... RISKY match -> holding for owner approval. from=', from);
-      // Hold the auto-reply; ping the owner with a ready-to-send draft.
-      addMessage(from, 'assistant', '(held for owner approval)');
-      if (OWNER_NUMBER) {
-        await sendWhatsApp(
-          OWNER_NUMBER,
-          `⚠️ Needs you — from ${from}\nThem: "${text}"\n\nDraft: "${reply}"\n\n` +
-          `To send this, reply:\n/ok ${from} ${reply}`
-        );
-      }
+      // Hold for owner approval — appears in the dashboard Approvals tab.
+      await store.addMsg(company.id, contact.id, 'assistant', reply, { status: 'held', provider });
+      await store.createApproval(company.id, contact.id, text, reply);
+      await store.logEvent(company.id, 'held', { provider });
+      console.log('Held for approval:', from);
     } else {
-      await sendWhatsApp(from, reply);
-      addMessage(from, 'assistant', reply);
+      const ok = await sendWhatsApp(from, reply);
+      await store.addMsg(company.id, contact.id, 'assistant', reply, {
+        status: ok ? 'sent' : 'failed', provider,
+      });
+      await store.logEvent(company.id, 'auto_reply', { provider });
     }
   } catch (err) {
     console.error('Handler error:', err);
   }
 });
 
-app.get('/', (_req, res) => res.send('WA agent running.'));
+app.get('/', (_req, res) => res.send('Cura WA agent running.'));
+
 app.listen(PORT, () => console.log(`Listening on port ${PORT}`));

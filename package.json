@@ -1,15 +1,17 @@
 {
-  "name": "wa-cloud-agent",
-  "version": "1.0.0",
-  "description": "WhatsApp Cloud API AI assistant for a solo contractor",
+  "name": "cura-wa-agent",
+  "version": "2.0.0",
+  "description": "WhatsApp Cloud API AI assistant + dashboard for construction companies",
   "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
+    "@supabase/supabase-js": "^2.110.7",
+    "cors": "^2.8.6",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "firebase-admin": "^12.7.0"
   }
 }

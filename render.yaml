@@ -9,14 +9,30 @@ services:
     envVars:
       # Set these values in the Render dashboard (Environment tab).
       # Marking sync:false keeps secrets out of this committed file.
+      # --- WhatsApp Cloud API ---
       - key: WHATSAPP_TOKEN
         sync: false
       - key: PHONE_NUMBER_ID
         sync: false
       - key: VERIFY_TOKEN
         sync: false
-      - key: OWNER_NUMBER
-        sync: false
+      # --- LLM providers (add as many Gemini keys as you have) ---
       - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY_2
+        sync: false
+      - key: GEMINI_API_KEY_3
+        sync: false
+      - key: GEMINI_API_KEY_4
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      # --- Supabase (database) ---
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      # --- Firebase Admin (dashboard auth) — paste service account JSON as one line ---
+      - key: FIREBASE_SERVICE_ACCOUNT
         sync: false
       # Render injects PORT automatically; server.js already reads it.
