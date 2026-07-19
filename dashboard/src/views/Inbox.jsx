@@ -62,7 +62,7 @@ export default function Inbox() {
   };
 
   return (
-    <div className="inbox">
+    <div className={`inbox ${activeId ? 'has-active' : ''}`}>
       <div className="conv-list">
         {contacts.length === 0 && <div className="conv muted">No conversations yet.</div>}
         {contacts.map((c) => (
@@ -83,6 +83,7 @@ export default function Inbox() {
       {active ? (
         <div className="thread">
           <div className="thread-head">
+            <button className="thread-back" onClick={() => setActiveId(null)} aria-label="Back to conversations">‹</button>
             <strong>{active.name || active.wa_id}</strong>
             <span className={`pill ${active.stage}`}>{active.stage}</span>
             <span className="muted">{active.wa_id}</span>

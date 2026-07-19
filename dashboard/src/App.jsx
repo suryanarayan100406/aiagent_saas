@@ -23,6 +23,7 @@ export default function App() {
   const { user, profile, loading, error, signOut } = useAuth();
   const [tab, setTab] = useState('inbox');
   const [pendingCount, setPendingCount] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   if (loading) return <div className="center muted">Loading…</div>;
   if (!user) return <Login />;
@@ -47,18 +48,33 @@ export default function App() {
 
   const isOwner = profile.user.role === 'owner';
   const nav = NAV.filter((n) => !n.ownerOnly || isOwner);
+  const brand = profile.company.name?.split(' ')[0] || 'Cura';
+  const activeLabel = nav.find((n) => n.id === tab)?.label || brand;
+
+  // Switching tabs on mobile should close the slide-out menu.
+  const go = (id) => { setTab(id); setMenuOpen(false); };
 
   return (
     <div className="app">
-      <aside className="sidebar">
+      {/* Mobile-only top bar with hamburger. Hidden on desktop via CSS. */}
+      <header className="topbar">
+        <button className="hamburger" onClick={() => setMenuOpen(true)} aria-label="Open menu">☰</button>
+        <div className="topbar-title">{activeLabel}</div>
+        {pendingCount > 0 && <span className="nav-badge">{pendingCount}</span>}
+      </header>
+
+      {/* Dark backdrop behind the slide-out menu on mobile. */}
+      {menuOpen && <div className="sidebar-backdrop" onClick={() => setMenuOpen(false)} />}
+
+      <aside className={`sidebar ${menuOpen ? 'open' : ''}`}>
         <div className="brand">
-          {profile.company.name?.split(' ')[0] || 'Cura'}<span>.</span>
+          {brand}<span>.</span>
         </div>
         {nav.map((n) => (
           <div
             key={n.id}
             className={`nav-item ${tab === n.id ? 'active' : ''}`}
-            onClick={() => setTab(n.id)}
+            onClick={() => go(n.id)}
           >
             <span>{n.icon}</span> {n.label}
             {n.id === 'approvals' && pendingCount > 0 && (
