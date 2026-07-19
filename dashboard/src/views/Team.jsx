@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 
-export default function Team() {
+export default function Team({ me }) {
   const [users, setUsers] = useState([]);
   const [form, setForm] = useState({ email: '', password: '', name: '', role: 'staff' });
   const [err, setErr] = useState(null);
@@ -25,6 +25,16 @@ export default function Team() {
     } catch (e) { setErr(e.message); }
   };
 
+  const remove = async (u) => {
+    setErr(null); setMsg(null);
+    if (!window.confirm(`Remove ${u.name || u.email || 'this teammate'}? Their login will be deleted.`)) return;
+    try {
+      await api.deleteUser(u.id);
+      setMsg('Teammate removed.');
+      load();
+    } catch (e) { setErr(e.message); }
+  };
+
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   return (
@@ -34,16 +44,22 @@ export default function Team() {
 
       <div className="card" style={{ marginBottom: 20 }}>
         <table>
-          <thead><tr><th>Name</th><th>Email</th><th>Role</th></tr></thead>
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead>
           <tbody>
             {users.map((u) => (
               <tr key={u.id}>
                 <td>{u.name || '—'}</td>
                 <td>{u.email || '—'}</td>
                 <td><span className={`pill ${u.role === 'owner' ? 'won' : 'new'}`}>{u.role}</span></td>
+                <td style={{ textAlign: 'right' }}>
+                  {u.id === me?.uid
+                    ? <span className="muted" style={{ fontSize: 12 }}>you</span>
+                    : <button className="btn-danger" onClick={() => remove(u)}
+                        style={{ padding: '4px 12px', fontSize: 13 }}>Remove</button>}
+                </td>
               </tr>
             ))}
-            {!users.length && <tr><td colSpan={3} className="muted">No team members yet.</td></tr>}
+            {!users.length && <tr><td colSpan={4} className="muted">No team members yet.</td></tr>}
           </tbody>
         </table>
       </div>

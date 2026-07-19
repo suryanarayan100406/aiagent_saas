@@ -38,4 +38,6 @@ export const api = {
   updateCompany: (patch) => req('PUT', '/company', patch),
   users: () => req('GET', '/users'),
   addUser: (u) => req('POST', '/users', u),
+  deleteUser: (uid) => req('DELETE', `/users/${uid}`),
+  health: () => req('GET', '/health'),
 };

@@ -7,6 +7,7 @@ import Pipeline from './views/Pipeline.jsx';
 import Analytics from './views/Analytics.jsx';
 import Knowledge from './views/Knowledge.jsx';
 import Team from './views/Team.jsx';
+import Status from './views/Status.jsx';
 
 const NAV = [
   { id: 'inbox', label: 'Inbox', icon: '💬' },
@@ -15,6 +16,7 @@ const NAV = [
   { id: 'analytics', label: 'Analytics', icon: '📊' },
   { id: 'knowledge', label: 'Knowledge', icon: '🧠', ownerOnly: true },
   { id: 'team', label: 'Team', icon: '👥', ownerOnly: true },
+  { id: 'status', label: 'Status', icon: '🩺', ownerOnly: true },
 ];
 
 export default function App() {
@@ -81,7 +83,8 @@ export default function App() {
         {tab === 'pipeline' && <Pipeline />}
         {tab === 'analytics' && <Analytics />}
         {tab === 'knowledge' && isOwner && <Knowledge company={profile.company} />}
-        {tab === 'team' && isOwner && <Team />}
+        {tab === 'team' && isOwner && <Team me={profile.user} />}
+        {tab === 'status' && isOwner && <Status />}
       </main>
     </div>
   );
