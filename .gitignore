@@ -1,5 +1,14 @@
 node_modules/
 .env
+.env.*
+!.env.example
+dashboard/.env
+dashboard/.env.*
+!dashboard/.env.example
 history.json
 *.log
 .claude/
+
+# Firebase Admin service-account keys — NEVER commit these (full access)
+*firebase-adminsdk*.json
+serviceAccount*.json

@@ -11,6 +11,7 @@ export default function Knowledge({ company }) {
     knowledge: company.knowledge || '',
     greeting: company.greeting || '',
     risky_words: company.risky_words || '',
+    owner_phone: company.owner_phone || '',
     ai_enabled: company.ai_enabled !== false,
   });
   const [saving, setSaving] = useState(false);
@@ -64,6 +65,10 @@ export default function Knowledge({ company }) {
         <label>Extra "risky" words (comma-separated — these get held for approval)</label>
         <input value={form.risky_words} onChange={set('risky_words')}
           placeholder="e.g. emi, loan, gst" />
+
+        <label>Owner WhatsApp number (notified when a reply is held for approval)</label>
+        <input value={form.owner_phone} onChange={set('owner_phone')}
+          placeholder="e.g. 919026390923 (country code, no + or spaces)" />
 
         <label style={{ textTransform: 'none', marginTop: 18 }}>
           <input type="checkbox" checked={form.ai_enabled} onChange={set('ai_enabled')}

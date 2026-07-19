@@ -84,10 +84,11 @@ app.post('/webhook', async (req, res) => {
       return;
     }
 
-    // First-time bare greeting -> branded welcome, then stop.
-    const history = await store.getRecentMessages(contact.id, 2);
-    const isFirst = history.length <= 1; // only the message we just stored
-    if (isFirst && BARE_GREETING.test(text) && company.greeting) {
+    // Bare greeting ("hi", "namaste", ...) -> always reply with the branded
+    // greeting the owner set in the dashboard, then stop. A bare greeting has no
+    // real content to answer, so the saved welcome is the right response every
+    // time — not just on the customer's first-ever message.
+    if (BARE_GREETING.test(text) && company.greeting) {
       await sendWhatsApp(from, company.greeting);
       await store.addMsg(company.id, contact.id, 'assistant', company.greeting);
       return;
@@ -110,6 +111,17 @@ app.post('/webhook', async (req, res) => {
       await store.createApproval(company.id, contact.id, text, reply);
       await store.logEvent(company.id, 'held', { provider });
       console.log('Held for approval:', from);
+
+      // Also ping the owner on WhatsApp so they don't have to watch the dashboard.
+      if (company.owner_phone) {
+        const who = contact.name || from;
+        const alert =
+          `🔔 Approval needed — ${company.name}\n\n` +
+          `From ${who}:\n"${text}"\n\n` +
+          `Draft reply:\n"${reply}"\n\n` +
+          `Open the dashboard to send, edit, or reject.`;
+        await sendWhatsApp(company.owner_phone, alert);
+      }
     } else {
       const ok = await sendWhatsApp(from, reply);
       await store.addMsg(company.id, contact.id, 'assistant', reply, {
