@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import { generate } from './lib/llm.js';
 import { sendWhatsApp } from './lib/whatsapp.js';
+import { sendEmail } from './lib/email.js';
 import { getCompany } from './lib/supa.js';
 import { api } from './lib/routes.js';
 import * as store from './lib/store.js';
@@ -119,18 +120,25 @@ app.post('/webhook', async (req, res) => {
       await sendWhatsApp(from, ack);
       await store.addMsg(company.id, contact.id, 'assistant', ack, { status: 'sent' });
 
-      // Also ping the owner on WhatsApp so they don't have to watch the dashboard.
-      if (company.owner_phone) {
-        const who = contact.name || from;
-        const alert =
-          `🔔 Approval needed — ${company.name}\n\n` +
-          `From ${who}:\n"${text}"\n\n` +
-          `Draft reply:\n"${reply}"\n\n` +
-          `Open the dashboard to send, edit, or reject.`;
-        const sent = await sendWhatsApp(company.owner_phone, alert);
-        console.log(sent ? `Owner alert sent to ${company.owner_phone}` : `Owner alert FAILED to ${company.owner_phone}`);
+      // Notify the owner. Email is the reliable channel (no WhatsApp 24h-window
+      // limit). WhatsApp is attempted too as a best-effort bonus — it only lands
+      // if the owner's number has an open 24h window with the business.
+      const who = contact.name || from;
+      const body =
+        `Approval needed — ${company.name}\n\n` +
+        `From ${who}:\n"${text}"\n\n` +
+        `Draft reply:\n"${reply}"\n\n` +
+        `Open the dashboard to send, edit, or reject.`;
+
+      if (company.owner_email) {
+        await sendEmail(company.owner_email, `🔔 Approval needed — ${who}`, body);
       } else {
-        console.log('No owner_phone set — skipping owner alert. Set it in Knowledge & Settings.');
+        console.log('No owner_email set — skipping email alert. Set it in Knowledge & Settings.');
+      }
+
+      if (company.owner_phone) {
+        const sent = await sendWhatsApp(company.owner_phone, `🔔 ${body}`);
+        console.log(sent ? `Owner WhatsApp alert sent to ${company.owner_phone}` : `Owner WhatsApp alert FAILED (likely closed 24h window) to ${company.owner_phone}`);
       }
     } else {
       const ok = await sendWhatsApp(from, reply);

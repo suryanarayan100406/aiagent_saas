@@ -15,12 +15,14 @@ create table if not exists companies (
   hours         text default '24x7',
   wa_phone_id   text,                         -- WhatsApp phone number ID (per company)
   owner_phone   text,                         -- owner's WhatsApp number, notified on held approvals
+  owner_email   text,                         -- owner's email, notified on held approvals (reliable channel)
   ai_enabled    boolean default true,         -- master on/off for auto-replies
   created_at    timestamptz default now()
 );
 
--- Migration: add owner_phone to already-created companies tables (safe to re-run).
+-- Migration: add owner contact columns to already-created companies tables (safe to re-run).
 alter table companies add column if not exists owner_phone text;
+alter table companies add column if not exists owner_email text;
 
 -- ---------- contacts (one per customer WhatsApp number) ----------
 create table if not exists contacts (

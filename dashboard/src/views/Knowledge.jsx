@@ -12,6 +12,7 @@ export default function Knowledge({ company }) {
     greeting: company.greeting || '',
     risky_words: company.risky_words || '',
     owner_phone: company.owner_phone || '',
+    owner_email: company.owner_email || '',
     ai_enabled: company.ai_enabled !== false,
   });
   const [saving, setSaving] = useState(false);
@@ -66,7 +67,11 @@ export default function Knowledge({ company }) {
         <input value={form.risky_words} onChange={set('risky_words')}
           placeholder="e.g. emi, loan, gst" />
 
-        <label>Owner WhatsApp number (notified when a reply is held for approval)</label>
+        <label>Owner email (alerted when a reply is held for approval — reliable)</label>
+        <input type="email" value={form.owner_email} onChange={set('owner_email')}
+          placeholder="e.g. owner@email.com" />
+
+        <label>Owner WhatsApp number (best-effort alert; only lands within a 24h window)</label>
         <input value={form.owner_phone} onChange={set('owner_phone')}
           placeholder="e.g. 919026390923 (country code, no + or spaces)" />
 
